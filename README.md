@@ -1,1 +1,475 @@
-# bloco-da-maizena
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Catálogo Maizena | Visual Inventory</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: #111111; 
+            color: #ffffff;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .bg-maizena { background-color: #F2C94C; }
+        .text-maizena { color: #F2C94C; }
+        .border-maizena { border-color: #F2C94C; }
+        .bg-tech-green { background-color: #1DB954; }
+        .bg-soft-red { background-color: #E63946; }
+        .bg-soft-orange { background-color: #F4A261; }
+        
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #111111; }
+        ::-webkit-scrollbar-thumb { background: #333333; border-radius: 10px; }
+
+        @media print {
+            body * { visibility: hidden; }
+            #receipt-print, #receipt-print *, #print-summary, #print-summary * { visibility: visible; }
+            #receipt-print, #print-summary { 
+                position: absolute; 
+                left: 0; 
+                top: 0; 
+                width: 100%; 
+                color: black !important; 
+                background: white !important; 
+                padding: 20px;
+            }
+            .no-print { display: none !important; }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        const FORMAS_PAGAMENTO = [
+            "Dinheiro", "Pix", "Pix CNPJ", "Crediário Bemol", "Cartão de débito", "Cartão de crédito"
+        ];
+
+        const Icon = ({ name, size = 20, className = "" }) => {
+            useEffect(() => { lucide.createIcons(); }, []);
+            return <i data-lucide={name} className={className} style={{ width: size, height: size }}></i>;
+        };
+
+        const App = () => {
+            const [produtos, setProdutos] = useState(JSON.parse(localStorage.getItem('maizena_produtos')) || []);
+            const [vendas, setVendas] = useState(JSON.parse(localStorage.getItem('maizena_vendas')) || []);
+            const [modal, setModal] = useState({ type: null, data: null });
+            const [abaAtiva, setAbaAtiva] = useState('catalogo');
+
+            useEffect(() => {
+                localStorage.setItem('maizena_produtos', JSON.stringify(produtos));
+                localStorage.setItem('maizena_vendas', JSON.stringify(vendas));
+            }, [produtos, vendas]);
+
+            const handleAddProduto = (novo) => {
+                setProdutos([...produtos, { ...novo, id: Date.now() }]);
+                setModal({ type: null });
+            };
+
+            const handleEditProduto = (editado) => {
+                setProdutos(produtos.map(p => p.id === editado.id ? editado : p));
+                setModal({ type: null });
+            };
+
+            const handleExcluirProduto = (id) => {
+                if(confirm("Tem certeza que deseja remover este produto do catálogo?")) {
+                    setProdutos(produtos.filter(p => p.id !== id));
+                }
+            };
+
+            const handleVenda = (id, cliente, pagamento) => {
+                const p = produtos.find(item => item.id === id);
+                if (p.estoque <= 0) return alert("Estoque esgotado!");
+
+                const novaVenda = {
+                    id: `V-${Date.now()}`,
+                    produtoId: id,
+                    nome: p.nome,
+                    valor: parseFloat(p.valor),
+                    cliente: cliente || "Consumidor",
+                    pagamento: pagamento,
+                    data: new Date().toISOString(),
+                    estornada: false
+                };
+
+                setProdutos(produtos.map(item => item.id === id ? { ...item, estoque: item.estoque - 1 } : item));
+                setVendas([...vendas, novaVenda]);
+                setModal({ type: 'cupom', data: novaVenda });
+            };
+
+            const handleReposicao = (id, qtd) => {
+                setProdutos(produtos.map(item => item.id === id ? { ...item, estoque: item.estoque + parseInt(qtd) } : item));
+                setModal({ type: null });
+            };
+
+            const handleEstorno = (vendaId) => {
+                const venda = vendas.find(v => v.id === vendaId);
+                setVendas(vendas.map(v => v.id === vendaId ? { ...v, estornada: true } : v));
+                setProdutos(produtos.map(p => p.id === venda.produtoId ? { ...p, estoque: p.estoque + 1 } : p));
+                setModal({ type: null });
+            };
+
+            return (
+                <div className="max-w-[1400px] mx-auto min-h-screen border-x border-zinc-800 flex flex-col">
+                    <header className="p-6 flex flex-wrap gap-4 justify-between items-center border-b border-zinc-800 bg-[#111111] sticky top-0 z-40">
+                        <div>
+                            <h1 className="text-2xl font-black tracking-tighter text-maizena italic">MAIZENA CATALOG</h1>
+                            <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">Estoque & Vendas Visual</p>
+                        </div>
+                        
+                        <div className="flex bg-zinc-900 p-1 rounded-2xl border border-zinc-800">
+                            <button onClick={() => setAbaAtiva('catalogo')} className={`px-6 py-2 rounded-xl font-bold transition ${abaAtiva === 'catalogo' ? 'bg-maizena text-black' : 'text-zinc-500'}`}>Catálogo</button>
+                            <button onClick={() => setAbaAtiva('resumo')} className={`px-6 py-2 rounded-xl font-bold transition ${abaAtiva === 'resumo' ? 'bg-maizena text-black' : 'text-zinc-500'}`}>Resumo Diário</button>
+                        </div>
+
+                        <button onClick={() => setModal({type: 'novo'})} className="bg-tech-green text-black px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 hover:scale-105 transition">
+                            <Icon name="plus" size={18}/> INCLUIR PRODUTO
+                        </button>
+                    </header>
+
+                    <main className="p-6 flex-1">
+                        {abaAtiva === 'catalogo' ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+                                {produtos.map(p => (
+                                    <ProductCard 
+                                        key={p.id} 
+                                        produto={p} 
+                                        onVenda={() => setModal({type: 'venda', data: p})}
+                                        onIncluir={() => setModal({type: 'incluir', data: p})}
+                                        onEstorno={() => setModal({type: 'estorno_lista', data: p})}
+                                        onEdit={() => setModal({type: 'editar', data: p})}
+                                        onDelete={() => handleExcluirProduto(p.id)}
+                                    />
+                                ))}
+                            </div>
+                        ) : (
+                            <ResumoDiario vendas={vendas} />
+                        )}
+                    </main>
+
+                    {modal.type === 'novo' && <ModalNovo onSave={handleAddProduto} onClose={() => setModal({type: null})} />}
+                    {modal.type === 'editar' && <ModalNovo onSave={handleEditProduto} onClose={() => setModal({type: null})} produtoParaEditar={modal.data} />}
+                    {modal.type === 'venda' && <ModalVenda produto={modal.data} onConfirm={handleVenda} onClose={() => setModal({type: null})} />}
+                    {modal.type === 'incluir' && <ModalIncluir produto={modal.data} onConfirm={handleReposicao} onClose={() => setModal({type: null})} />}
+                    {modal.type === 'cupom' && <ModalCupom venda={modal.data} onClose={() => setModal({type: null})} />}
+                    {modal.type === 'estorno_lista' && (
+                        <ModalListaEstorno 
+                            produto={modal.data} 
+                            vendas={vendas.filter(v => v.produtoId === modal.data.id && !v.estornada)}
+                            onConfirm={handleEstorno}
+                            onClose={() => setModal({type: null})}
+                        />
+                    )}
+                </div>
+            );
+        };
+
+        const ProductCard = ({ produto, onVenda, onIncluir, onEstorno, onEdit, onDelete }) => (
+            <div className="bg-maizena rounded-[2.5rem] overflow-hidden h-[500px] relative group shadow-2xl">
+                <img src={produto.imagem || 'https://images.unsplash.com/photo-1523381210434-271e8be1f52b?auto=format&fit=crop&q=80&w=400'} className="w-full h-full object-cover transition duration-500 group-hover:scale-110" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-80" />
+                <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                    <button onClick={onEdit} className="bg-black/50 backdrop-blur-md text-white p-2 rounded-full hover:bg-black"><Icon name="edit-3" size={16}/></button>
+                    <button onClick={onDelete} className="bg-soft-red/80 backdrop-blur-md text-white p-2 rounded-full hover:bg-soft-red"><Icon name="trash-2" size={16}/></button>
+                </div>
+                <div className="absolute bottom-0 left-0 right-0 p-6">
+                    <div className="flex justify-between items-end mb-4">
+                        <div className="bg-black/80 backdrop-blur-md p-4 rounded-3xl border border-white/10">
+                            <h3 className="text-white font-bold text-lg leading-tight uppercase tracking-tight">{produto.nome}</h3>
+                            <p className="text-maizena font-black text-2xl">R$ {parseFloat(produto.valor).toFixed(2)}</p>
+                        </div>
+                        <div className="bg-white p-3 rounded-2xl text-center min-w-[65px] shadow-xl">
+                            <span className="block text-[9px] font-black text-zinc-400 uppercase leading-none mb-1">QTD</span>
+                            <span className="text-black font-black text-xl">{produto.estoque}</span>
+                        </div>
+                    </div>
+                    <div className="flex gap-2 translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300">
+                        <button onClick={onVenda} className="flex-1 bg-tech-green text-black font-black py-4 rounded-2xl text-sm flex items-center justify-center gap-2">
+                            <Icon name="shopping-bag" size={18}/> RETIRAR
+                        </button>
+                        <button onClick={onIncluir} className="bg-zinc-900 text-white p-4 rounded-2xl hover:bg-black transition"><Icon name="plus" size={20}/></button>
+                        <button onClick={onEstorno} className="bg-soft-orange text-black p-4 rounded-2xl hover:bg-orange-400 transition"><Icon name="refresh-ccw" size={20}/></button>
+                    </div>
+                </div>
+            </div>
+        );
+
+        const ModalNovo = ({ onSave, onClose, produtoParaEditar = null }) => {
+            const [f, setF] = useState(produtoParaEditar || { nome: '', valor: '', estoque: '', imagem: '' });
+            const handleImg = (e) => {
+                const reader = new FileReader();
+                reader.onload = (ev) => setF({...f, imagem: ev.target.result});
+                reader.readAsDataURL(e.target.files[0]);
+            };
+            return (
+                <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4">
+                    <div className="bg-zinc-900 border border-zinc-800 p-8 rounded-[40px] w-full max-w-xl shadow-2xl">
+                        <h2 className="text-3xl font-black mb-8 text-maizena italic uppercase">{produtoParaEditar ? 'Editar Peça' : 'Adicionar Peça'}</h2>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <div className="space-y-4">
+                                <Input label="Nome da Roupa" value={f.nome} onChange={v => setF({...f, nome: v})} placeholder="Ex: Cropped Maizena" />
+                                <Input label="Valor (R$)" type="number" value={f.valor} onChange={v => setF({...f, valor: v})} placeholder="99.90" />
+                                {!produtoParaEditar && <Input label="Estoque Inicial" type="number" value={f.estoque} onChange={v => setF({...f, estoque: parseInt(v)})} placeholder="10" />}
+                            </div>
+                            <div className="border-2 border-dashed border-zinc-700 rounded-3xl flex flex-col items-center justify-center bg-black/40 overflow-hidden relative">
+                                {f.imagem ? <img src={f.imagem} className="absolute inset-0 w-full h-full object-cover" /> : <div className="text-center p-4"><Icon name="camera" className="mx-auto text-zinc-600 mb-2" size={40} /><p className="text-xs text-zinc-500 font-bold uppercase">Foto</p></div>}
+                                <input type="file" onChange={handleImg} className="absolute inset-0 opacity-0 cursor-pointer" />
+                            </div>
+                        </div>
+                        <div className="flex gap-4 mt-10">
+                            <button onClick={() => onSave(f)} className="flex-1 bg-tech-green text-black font-black py-4 rounded-2xl uppercase">SALVAR</button>
+                            <button onClick={onClose} className="px-8 text-zinc-500 font-bold">FECHAR</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const ModalVenda = ({ produto, onConfirm, onClose }) => {
+            const [c, setC] = useState('');
+            const [p, setP] = useState('');
+
+            return (
+                <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4">
+                    <div className="bg-zinc-900 border border-zinc-800 p-8 rounded-[40px] w-full max-w-md">
+                        <h2 className="text-2xl font-black mb-2 uppercase italic text-center text-maizena">RETIRADA DE ITEM</h2>
+                        <p className="text-white text-center font-bold mb-6">{produto.nome} - R$ {parseFloat(produto.valor).toFixed(2)}</p>
+                        
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2 block">Nome do Cliente (Opcional)</label>
+                                <input value={c} onChange={e => setC(e.target.value)} className="w-full bg-black border border-zinc-800 p-4 rounded-2xl text-white outline-none focus:border-maizena" />
+                            </div>
+
+                            <div>
+                                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2 block">Forma de Pagamento</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {FORMAS_PAGAMENTO.map(forma => (
+                                        <button 
+                                            key={forma} 
+                                            onClick={() => setP(forma)}
+                                            className={`p-3 rounded-xl text-[10px] font-black uppercase border transition ${p === forma ? 'bg-maizena text-black border-maizena' : 'bg-black text-zinc-500 border-zinc-800'}`}
+                                        >
+                                            {forma}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        <button 
+                            disabled={!p}
+                            onClick={() => onConfirm(produto.id, c, p)} 
+                            className={`w-full py-5 rounded-2xl mt-8 font-black transition ${p ? 'bg-tech-green text-black' : 'bg-zinc-800 text-zinc-600 cursor-not-allowed'}`}
+                        >
+                            CONFIRMAR RETIRADA
+                        </button>
+                        <button onClick={onClose} className="w-full mt-4 text-zinc-500 font-bold text-sm">CANCELAR</button>
+                    </div>
+                </div>
+            );
+        };
+
+        const ModalCupom = ({ venda, onClose }) => (
+            <div className="fixed inset-0 bg-black/98 z-50 flex items-center justify-center p-4">
+                <div className="bg-white p-8 w-[350px] text-black shadow-2xl relative" id="receipt-print">
+                    <div className="text-center border-b-2 border-dashed border-gray-300 pb-6 mb-6">
+                        <h2 className="font-black text-2xl tracking-tighter italic">MAIZENA STORE</h2>
+                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Controle de Saída</p>
+                    </div>
+                    <div className="space-y-3 mb-8">
+                        <div className="flex justify-between text-xs"><span>DATA:</span><span className="font-bold">{new Date(venda.data).toLocaleString()}</span></div>
+                        <div className="flex justify-between text-xs"><span>PAGAMENTO:</span><span className="font-bold uppercase text-tech-green">{venda.pagamento}</span></div>
+                        <div className="flex justify-between text-xs border-t border-gray-100 pt-3"><span>ITEM:</span><span className="font-bold uppercase">{venda.nome}</span></div>
+                        <div className="flex justify-between text-xs"><span>CLIENTE:</span><span className="font-bold uppercase">{venda.cliente}</span></div>
+                        <div className="flex justify-between text-xl font-black border-t-2 border-dashed border-gray-300 pt-4">
+                            <span>TOTAL</span>
+                            <span>R$ {venda.valor.toFixed(2)}</span>
+                        </div>
+                    </div>
+                    <div className="no-print space-y-3">
+                        <button onClick={() => window.print()} className="w-full bg-black text-white py-4 rounded-xl font-black flex items-center justify-center gap-2">
+                            <Icon name="printer" size={18}/> IMPRIMIR
+                        </button>
+                        <button onClick={onClose} className="w-full py-2 text-gray-400 font-bold text-sm">FECHAR</button>
+                    </div>
+                </div>
+            </div>
+        );
+
+        const ModalIncluir = ({ produto, onConfirm, onClose }) => {
+            const [q, setQ] = useState(1);
+            return (
+                <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4">
+                    <div className="bg-zinc-900 border border-zinc-800 p-8 rounded-[40px] w-full max-w-sm text-center">
+                        <h2 className="text-xl font-black text-zinc-400 mb-6 uppercase tracking-widest">REPOR ESTOQUE</h2>
+                        <input type="number" value={q} onChange={e => setQ(e.target.value)} className="w-full bg-black text-maizena text-5xl font-black text-center p-6 rounded-3xl mb-8 border border-zinc-800" />
+                        <button onClick={() => onConfirm(produto.id, q)} className="w-full bg-tech-green text-black font-black py-5 rounded-2xl">ADICIONAR</button>
+                        <button onClick={onClose} className="text-zinc-500 font-bold mt-4 block mx-auto">CANCELAR</button>
+                    </div>
+                </div>
+            );
+        };
+
+        const ModalListaEstorno = ({ produto, vendas, onConfirm, onClose }) => (
+            <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4">
+                <div className="bg-zinc-900 border border-zinc-800 p-8 rounded-[40px] w-full max-w-2xl max-h-[80vh] flex flex-col">
+                    <h2 className="text-2xl font-black mb-6 italic uppercase text-maizena">HISTÓRICO: {produto.nome}</h2>
+                    <div className="flex-1 overflow-y-auto space-y-3">
+                        {vendas.length === 0 ? <div className="py-10 text-center text-zinc-600 font-bold uppercase">Sem vendas</div> : 
+                        vendas.map(v => (
+                            <div key={v.id} className="bg-black/40 border border-zinc-800 p-4 rounded-2xl flex justify-between items-center">
+                                <div>
+                                    <p className="font-black text-white uppercase">{v.cliente}</p>
+                                    <p className="text-[10px] text-zinc-500">{new Date(v.data).toLocaleString()} • {v.pagamento}</p>
+                                </div>
+                                <button onClick={() => onConfirm(v.id)} className="bg-soft-orange text-black px-4 py-2 rounded-xl font-black text-xs">ESTORNAR</button>
+                            </div>
+                        ))}
+                    </div>
+                    <button onClick={onClose} className="mt-8 py-4 bg-zinc-800 text-white rounded-2xl font-black">FECHAR</button>
+                </div>
+            </div>
+        );
+
+        const ResumoDiario = ({ vendas }) => {
+            const [filtro, setFiltro] = useState(new Date().toISOString().split('T')[0]);
+            
+            const dados = useMemo(() => {
+                const f = vendas.filter(v => 
+                    new Date(v.data).toLocaleDateString('pt-BR') === new Date(filtro + "T00:00:00").toLocaleDateString('pt-BR') 
+                    && !v.estornada
+                );
+
+                const porForma = FORMAS_PAGAMENTO.reduce((acc, forma) => {
+                    acc[forma] = f.filter(v => v.pagamento === forma).reduce((sum, v) => sum + v.valor, 0);
+                    return acc;
+                }, {});
+
+                return {
+                    lista: f,
+                    qtd: f.length,
+                    total: f.reduce((a, v) => a + v.valor, 0),
+                    porForma
+                };
+            }, [vendas, filtro]);
+
+            return (
+                <div className="max-w-5xl mx-auto">
+                    <div id="print-summary" className="hidden print:block">
+                        <h1 className="text-2xl font-black border-b-2 pb-2 mb-4">FECHAMENTO DE CAIXA - MAIZENA</h1>
+                        <p className="font-bold">DATA: {new Date(filtro + "T00:00:00").toLocaleDateString('pt-BR')}</p>
+                        <div className="my-6 grid grid-cols-2 gap-4 border p-4">
+                            <p>PEÇAS VENDIDAS: <strong>{dados.qtd}</strong></p>
+                            <p>FATURAMENTO BRUTO: <strong>R$ {dados.total.toFixed(2)}</strong></p>
+                        </div>
+                        <h2 className="font-black mt-4 border-b">RESUMO POR PAGAMENTO</h2>
+                        <table className="w-full mt-2 mb-6">
+                            <tbody>
+                                {FORMAS_PAGAMENTO.map(forma => (
+                                    <tr key={forma} className="border-b">
+                                        <td className="py-1">{forma}</td>
+                                        <td className="text-right font-bold">R$ {dados.porForma[forma].toFixed(2)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                        <h2 className="font-black border-b">DETALHAMENTO DE VENDAS</h2>
+                        <table className="w-full mt-2 text-xs">
+                            <thead>
+                                <tr className="text-left border-b">
+                                    <th>HORA</th><th>CLIENTE</th><th>PRODUTO</th><th className="text-right">VALOR</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {dados.lista.map(v => (
+                                    <tr key={v.id} className="border-b">
+                                        <td>{new Date(v.data).toLocaleTimeString()}</td>
+                                        <td>{v.cliente}</td>
+                                        <td>{v.nome}</td>
+                                        <td className="text-right">R$ {v.valor.toFixed(2)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div className="no-print">
+                        <div className="flex flex-wrap justify-between items-end mb-10 gap-4">
+                            <div>
+                                <h2 className="text-4xl font-black tracking-tighter italic uppercase">Performance</h2>
+                                <p className="text-zinc-500 font-bold text-xs uppercase italic">Relatórios do dia</p>
+                            </div>
+                            <div className="flex gap-2">
+                                <button onClick={() => window.print()} className="bg-zinc-800 text-white px-6 py-4 rounded-2xl font-black flex items-center gap-2 border border-zinc-700 hover:bg-zinc-700 transition">
+                                    <Icon name="printer" size={18}/> IMPRIMIR DIA
+                                </button>
+                                <input type="date" value={filtro} onChange={e => setFiltro(e.target.value)} className="bg-zinc-900 border border-zinc-800 p-4 rounded-2xl text-white font-bold outline-none" />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                            <div className="bg-maizena p-10 rounded-[40px] text-black shadow-2xl">
+                                <p className="font-black text-xs uppercase opacity-60 mb-2 tracking-widest">Peças Vendidas</p>
+                                <h3 className="text-7xl font-black tracking-tighter">{dados.qtd}</h3>
+                            </div>
+                            <div className="bg-tech-green p-10 rounded-[40px] text-black shadow-2xl">
+                                <p className="font-black text-xs uppercase opacity-60 mb-2 tracking-widest">Faturamento Bruto</p>
+                                <h3 className="text-5xl font-black tracking-tighter">R$ {dados.total.toFixed(2)}</h3>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-10">
+                            {FORMAS_PAGAMENTO.map(forma => (
+                                <div key={forma} className="bg-zinc-900 p-4 rounded-2xl border border-zinc-800">
+                                    <p className="text-[9px] text-zinc-500 font-black uppercase mb-1">{forma}</p>
+                                    <p className="text-sm font-black text-maizena">R$ {dados.porForma[forma].toFixed(2)}</p>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="bg-zinc-900 border border-zinc-800 rounded-[40px] overflow-hidden">
+                            <table className="w-full text-left">
+                                <thead className="bg-black/50 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                                    <tr><th className="p-8">Roupa</th><th className="p-8">Cliente</th><th className="p-8">Forma</th><th className="p-8 text-right">Valor</th></tr>
+                                </thead>
+                                <tbody className="divide-y divide-zinc-800">
+                                    {dados.lista.map(v => (
+                                        <tr key={v.id} className="hover:bg-white/5 transition">
+                                            <td className="p-8 font-black uppercase text-sm">{v.nome}</td>
+                                            <td className="p-8 text-zinc-400 font-bold text-xs uppercase">{v.cliente}</td>
+                                            <td className="p-8 text-zinc-500 text-[10px] font-black uppercase">{v.pagamento}</td>
+                                            <td className="p-8 text-right font-black text-tech-green">R$ {v.valor.toFixed(2)}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                            {dados.lista.length === 0 && <div className="p-24 text-center text-zinc-700 font-black italic uppercase">Sem movimentação</div>}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const Input = ({ label, type="text", value, onChange, placeholder }) => (
+            <div>
+                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2 ml-1">{label}</label>
+                <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className="w-full bg-black border border-zinc-800 p-4 rounded-2xl text-white font-bold outline-none focus:border-maizena" />
+            </div>
+        );
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
